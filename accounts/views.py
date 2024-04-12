@@ -1,8 +1,10 @@
-from django.shortcuts import render
 from django.shortcuts import render, redirect
 from django.contrib.auth.models import User, Group
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
+from .forms import ProfileForm
+from django.contrib.auth.decorators import login_required
+from .models import Profile
 
 # Create your views here.
 def customer_login(request):
@@ -27,6 +29,25 @@ def customer_login(request):
             messages.error(request, 'Please fill all fields')
     return render(request, 'accounts/customer/login.html')
 def seller_login(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        group = request.POST.get('group') # customer
+        if username and password:
+            user = authenticate(request, username=username, password=password)
+            if user is None:
+                messages.error(request, 'Invalid credentials')
+                redirect('clogin')
+            else:
+                # if user is a customer
+                if user.groups.filter(name=group).exists():
+                    login(request, user)
+                    return redirect('home')
+                else:
+                    messages.error(request, 'You are not a seller')
+                    return redirect('clogin')
+        else:
+            messages.error(request, 'Please fill all fields')
     return render(request, 'accounts/seller/login.html')
 def customer_register(request):
     if request.method == "POST":
@@ -72,8 +93,23 @@ def seller_register(request):
         else:
             messages.error(request, 'Passwords do not match')
     return render(request, 'accounts/seller/register.html')
-    return render(request, 'accounts/seller/register.html')
-
 def logout_view(request):
     logout(request)
     return redirect('home')
+@login_required
+def create_profile(request):
+    if request.method == 'POST':
+        form = ProfileForm(request.POST, request.FILES)
+        if form.is_valid():
+            profile = form.save(commit=False)
+            profile.user = request.user
+            profile.save()
+            return redirect('home')
+    else:
+        form = ProfileForm()
+        profile = Profile.objects.filter(user=request.user).first()
+        if profile:
+            form = ProfileForm(instance=profile)
+        else:
+            form = ProfileForm()
+    return render(request, 'accounts/create_profile.html', {'form': form})
